@@ -27,13 +27,13 @@ export function useGameSocket({ roomId, player, onState, onError, onClosed }: Us
   onClosedRef.current = onClosed;
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !player) return;
 
     const socket = io(SOCKET_URL, {
       transports: ['websocket'],
       auth: {
-        playerId: player?.id || '',
-        playerNickname: encodeURIComponent(player?.nickname || ''),
+        playerId: player.id,
+        playerNickname: encodeURIComponent(player.nickname),
       },
     });
     socketRef.current = socket;

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
+import { clearActiveRoom, rememberActiveRoom } from '@/lib/activeRoom';
 import { Room } from '@/types';
 import { usePlayerStore } from '@/store/player';
 import { useGameSocket } from '@/hooks/useGameSocket';
@@ -30,6 +31,7 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
       setTimeout(() => setError(''), 3000);
     },
     onClosed: (msg) => {
+      clearActiveRoom(roomId);
       setRoom(null);
       setError(msg);
     },
@@ -46,6 +48,18 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
       .then((res) => setRoom(res.data))
       .catch(() => setError('房间不存在'));
   }, [roomId]);
+
+  useEffect(() => {
+    if (!room || !player) return;
+
+    const isSeated = room.players.some((p) => p.userId === player.id);
+    if (isSeated && room.status !== 'finished') {
+      rememberActiveRoom(room);
+    }
+    if (room.status === 'finished') {
+      clearActiveRoom(room.id);
+    }
+  }, [room, player]);
 
   const mySeat = room?.players.find((p) => p.userId === player?.id)?.seat ?? null;
   const isInRoom = mySeat !== null;
@@ -68,6 +82,7 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
     setJoining(true);
     try {
       const res = await api.post(`/rooms/${roomId}/join`);
+      rememberActiveRoom(res.data);
       setRoom(res.data);
     } catch (err: any) {
       setError(err.response?.data?.message || '加入失败');
@@ -89,6 +104,7 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
     setLeaving(true);
     try {
       await api.post(`/rooms/${roomId}/leave`);
+      clearActiveRoom(roomId);
       router.push('/rooms');
     } catch (err: any) {
       setError(err.response?.data?.message || '离开房间失败');
@@ -234,6 +250,18 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
                 <p className="text-xs text-gray-400 mt-2">把本页链接发给好友即可一起玩</p>
               </div>
             )}
+
+            <div className="mt-6 pt-4 border-t">
+              <p className="text-xs font-medium text-gray-400 mb-2">当前身份</p>
+              <div className="flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2">
+                <span className="text-sm font-medium text-gray-900">
+                  {player?.nickname || '临时玩家'}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {mySeat === null ? '观战' : getSeatLabel(mySeat)}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -296,4 +324,8 @@ function renderBanner(room: Room, mySeat: number | null, isMyTurn: boolean) {
   }
   const current = room.players.find((p) => p.seat === room.currentTurnSeat);
   return <span className="text-gray-500">等待 {current?.nickname || '对手'} 落子...</span>;
+}
+
+function getSeatLabel(seat: number): string {
+  return seat === 0 ? '黑棋 · 先手' : '白棋 · 后手';
 }

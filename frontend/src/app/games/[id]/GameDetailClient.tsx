@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Game } from '@/types';
 import { api } from '@/lib/api';
+import { rememberActiveRoom } from '@/lib/activeRoom';
 import { getDifficultyLabel, getDifficultyColor, getPlaytimeLabel } from '@/lib/utils';
 
 const GAME_EMOJI: Record<string, string> = {
@@ -22,6 +23,7 @@ export function GameDetailClient({ game }: { game: Game }) {
     setError('');
     try {
       const res = await api.post('/rooms', { gameSlug: game.slug, mode });
+      rememberActiveRoom(res.data);
       router.push(`/rooms/${res.data.id}`);
     } catch (err: any) {
       setError(err.response?.data?.message || '创建房间失败');

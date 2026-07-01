@@ -1,20 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { clearActiveRoom, getActiveRoom, rememberActiveRoom } from '@/lib/activeRoom';
 import { Room, Game } from '@/types';
 import { RoomCard } from '@/components/play/RoomCard';
 import { CreateRoomModal } from '@/components/play/CreateRoomModal';
 import { useLobbySocket } from '@/hooks/useLobbySocket';
+import { usePlayerStore } from '@/store/player';
+import { getGameNameZh } from '@/lib/utils';
 
 export default function RoomsPage() {
   const queryClient = useQueryClient();
+  const player = usePlayerStore((state) => state.player);
   const [showCreate, setShowCreate] = useState(false);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
 
   useLobbySocket((nextRooms) => {
     queryClient.setQueryData(['rooms'], nextRooms);
   });
+
+  useEffect(() => {
+    setActiveRoomId(getActiveRoom()?.id || null);
+  }, []);
 
   const { data: rooms, isLoading, isFetching } = useQuery<Room[]>({
     queryKey: ['rooms'],
@@ -28,6 +38,45 @@ export default function RoomsPage() {
     queryKey: ['games'],
     queryFn: async () => (await api.get('/games')).data,
   });
+
+  const {
+    data: activeRoom,
+    isError: activeRoomError,
+  } = useQuery<Room>({
+    queryKey: ['active-room', activeRoomId],
+    queryFn: async () => (await api.get(`/rooms/${activeRoomId}`)).data,
+    enabled: Boolean(activeRoomId),
+    staleTime: 0,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (activeRoomError && activeRoomId) {
+      clearActiveRoom(activeRoomId);
+      setActiveRoomId(null);
+    }
+  }, [activeRoomError, activeRoomId]);
+
+  useEffect(() => {
+    if (!activeRoom || !activeRoomId || !player) return;
+
+    const isSeated = activeRoom.players.some((roomPlayer) => roomPlayer.userId === player.id);
+    if (activeRoom.status === 'finished' || !isSeated) {
+      clearActiveRoom(activeRoomId);
+      setActiveRoomId(null);
+      return;
+    }
+
+    rememberActiveRoom(activeRoom);
+  }, [activeRoom, activeRoomId, player]);
+
+  const resumableRoom =
+    activeRoom &&
+    player &&
+    activeRoom.status !== 'finished' &&
+    activeRoom.players.some((roomPlayer) => roomPlayer.userId === player.id)
+      ? activeRoom
+      : null;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -46,6 +95,24 @@ export default function RoomsPage() {
           <span>创建房间</span>
         </button>
       </div>
+
+      {resumableRoom && (
+        <div className="mb-6 flex flex-col gap-3 rounded-lg border border-primary-100 bg-primary-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-medium text-primary-600">继续房间</p>
+            <p className="font-semibold text-gray-900">{resumableRoom.title}</p>
+            <p className="text-sm text-gray-500">
+              {getGameNameZh(resumableRoom.gameSlug)} · {resumableRoom.players.length}/{resumableRoom.maxPlayers}
+            </p>
+          </div>
+          <Link
+            href={`/rooms/${resumableRoom.id}`}
+            className="inline-flex justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
+          >
+            进入房间
+          </Link>
+        </div>
+      )}
 
       <div className="flex items-center space-x-2 mb-4">
         <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
