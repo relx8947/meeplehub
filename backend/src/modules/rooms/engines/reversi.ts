@@ -35,6 +35,7 @@ function inBounds(r: number, c: number): boolean {
 
 /** Return the list of opponent pieces that would be flipped by placing `piece` at (r,c). */
 function flipsFor(board: Board, r: number, c: number, piece: Cell): [number, number][] {
+  if (!inBounds(r, c)) return [];
   if (board[r][c] !== 0) return [];
   const opp: Cell = piece === 1 ? 2 : 1;
   const flips: [number, number][] = [];
