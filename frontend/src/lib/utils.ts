@@ -82,6 +82,7 @@ export function getGameNameZh(slug: string): string {
   const names: Record<string, string> = {
     gomoku: '五子棋',
     reversi: '黑白棋',
+    'connect-four': '四子棋',
   };
   return names[slug] || slug;
 }

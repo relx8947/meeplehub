@@ -1,10 +1,12 @@
 import { GameEngine } from './types';
 import { gomokuEngine } from './gomoku';
 import { reversiEngine } from './reversi';
+import { connectFourEngine } from './connect-four';
 
 const ENGINES: Record<string, GameEngine> = {
   [gomokuEngine.slug]: gomokuEngine,
   [reversiEngine.slug]: reversiEngine,
+  [connectFourEngine.slug]: connectFourEngine,
 };
 
 export function getEngine(slug: string): GameEngine {

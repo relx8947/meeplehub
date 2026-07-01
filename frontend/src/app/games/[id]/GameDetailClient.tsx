@@ -11,6 +11,7 @@ import { getDifficultyLabel, getDifficultyColor, getPlaytimeLabel } from '@/lib/
 const GAME_EMOJI: Record<string, string> = {
   gomoku: '⚫',
   reversi: '🔵',
+  'connect-four': '🔴',
 };
 
 export function GameDetailClient({ game }: { game: Game }) {

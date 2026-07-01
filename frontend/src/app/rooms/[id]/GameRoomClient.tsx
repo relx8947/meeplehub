@@ -10,6 +10,7 @@ import { usePlayerStore } from '@/store/player';
 import { useGameSocket } from '@/hooks/useGameSocket';
 import { GomokuBoard } from '@/components/play/GomokuBoard';
 import { ReversiBoard } from '@/components/play/ReversiBoard';
+import { ConnectFourBoard } from '@/components/play/ConnectFourBoard';
 import { reversiLegalMoves, countDiscs } from '@/lib/reversi';
 import { getGameNameZh, getModeLabel } from '@/lib/utils';
 
@@ -172,10 +173,16 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
 
           {room.gameSlug === 'gomoku' ? (
             <GomokuBoard board={room.boardState} onPlace={handlePlace} disabled={boardDisabled} />
-          ) : (
+          ) : room.gameSlug === 'reversi' ? (
             <ReversiBoard
               board={room.boardState}
               legalMoves={legalMoves}
+              onPlace={handlePlace}
+              disabled={boardDisabled}
+            />
+          ) : (
+            <ConnectFourBoard
+              board={room.boardState}
               onPlace={handlePlace}
               disabled={boardDisabled}
             />
@@ -258,7 +265,7 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
                   {player?.nickname || '临时玩家'}
                 </span>
                 <span className="text-xs text-gray-500">
-                  {mySeat === null ? '观战' : getSeatLabel(mySeat)}
+                  {mySeat === null ? '观战' : getSeatLabel(room.gameSlug, mySeat)}
                 </span>
               </div>
             </div>
@@ -272,7 +279,7 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
 function PlayerRow({ room, seat, mySeat }: { room: Room; seat: number; mySeat: number | null }) {
   const player = room.players.find((p) => p.seat === seat);
   const isTurn = room.status === 'playing' && room.currentTurnSeat === seat;
-  const pieceColor = seat === 0 ? 'bg-black' : 'bg-white border border-gray-300';
+  const pieceColor = getPieceColor(room.gameSlug, seat);
 
   return (
     <div
@@ -286,7 +293,7 @@ function PlayerRow({ room, seat, mySeat }: { room: Room; seat: number; mySeat: n
           {player ? player.nickname : '等待加入...'}
           {player && mySeat === seat && <span className="text-primary-600 ml-1">(你)</span>}
         </p>
-        <p className="text-xs text-gray-400">{seat === 0 ? '黑棋 · 先手' : '白棋 · 后手'}</p>
+        <p className="text-xs text-gray-400">{getSeatLabel(room.gameSlug, seat)}</p>
       </div>
       {isTurn && (
         <span className="text-xs bg-primary-600 text-white px-2 py-1 rounded-full animate-pulse">
@@ -326,6 +333,16 @@ function renderBanner(room: Room, mySeat: number | null, isMyTurn: boolean) {
   return <span className="text-gray-500">等待 {current?.nickname || '对手'} 落子...</span>;
 }
 
-function getSeatLabel(seat: number): string {
+function getSeatLabel(gameSlug: string, seat: number): string {
+  if (gameSlug === 'connect-four') {
+    return seat === 0 ? '红棋 · 先手' : '黄棋 · 后手';
+  }
   return seat === 0 ? '黑棋 · 先手' : '白棋 · 后手';
+}
+
+function getPieceColor(gameSlug: string, seat: number): string {
+  if (gameSlug === 'connect-four') {
+    return seat === 0 ? 'bg-red-500' : 'bg-yellow-300 border border-yellow-400';
+  }
+  return seat === 0 ? 'bg-black' : 'bg-white border border-gray-300';
 }

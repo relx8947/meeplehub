@@ -19,7 +19,7 @@ rooms, and play supported board games online.
 - Real-time lobby updates over WebSocket
 - Room cleanup for identity switching, explicit leaving, surrendering, and inactive players
 - Session room recovery inside the current browser session
-- Gomoku and Reversi
+- Gomoku, Reversi, and Connect Four
 - Local AI opponent support
 
 ## Development
