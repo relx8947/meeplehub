@@ -45,18 +45,25 @@ export class RoomsController {
   @ApiOperation({ summary: '释放当前临时身份占用的房间' })
   async releasePlayer(@Req() request: Request) {
     const result = await this.roomsService.releasePlayer(this.readPlayer(request).userId);
-
-    for (const room of result.finishedRooms) {
-      this.gameGateway.broadcast(room);
-    }
-    for (const roomId of result.deletedRoomIds) {
-      this.gameGateway.broadcastRoomClosed(roomId);
-    }
-    await this.gameGateway.broadcastLobbyRooms();
+    await this.gameGateway.broadcastLifecycle(result);
 
     return {
       deletedRoomIds: result.deletedRoomIds,
       finishedRoomIds: result.finishedRooms.map((room) => room.id),
+      updatedRoomIds: result.updatedRooms.map((room) => room.id),
+    };
+  }
+
+  @Post(':id/leave')
+  @ApiOperation({ summary: '离开房间；等待中房主会关闭房间，开局后按投降处理' })
+  async leave(@Param('id') id: string, @Req() request: Request) {
+    const result = await this.roomsService.leaveRoom(id, this.readPlayer(request).userId);
+    await this.gameGateway.broadcastLifecycle(result);
+
+    return {
+      deletedRoomIds: result.deletedRoomIds,
+      finishedRoomIds: result.finishedRooms.map((room) => room.id),
+      updatedRoomIds: result.updatedRooms.map((room) => room.id),
     };
   }
 

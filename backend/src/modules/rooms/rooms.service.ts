@@ -19,6 +19,7 @@ export interface PlayerIdentity {
 export interface ReleasePlayerResult {
   deletedRoomIds: string[];
   finishedRooms: Room[];
+  updatedRooms: Room[];
 }
 
 @Injectable()
@@ -34,12 +35,15 @@ export class RoomsService {
     }
     const engine = getEngine(dto.gameSlug);
     const displayName = user.nickname;
+    const now = new Date().toISOString();
 
     const host: RoomPlayer = {
       seat: 0,
       userId: user.userId,
       nickname: displayName,
       isAI: false,
+      connected: true,
+      lastSeenAt: now,
     };
 
     const players: RoomPlayer[] = [host];
@@ -51,7 +55,6 @@ export class RoomsService {
       status = RoomStatus.PLAYING;
     }
 
-    const now = new Date().toISOString();
     const room: Room = {
       id: randomUUID(),
       gameSlug: dto.gameSlug,
@@ -105,6 +108,7 @@ export class RoomsService {
 
     // Already seated? Idempotent — just return.
     if (room.players.some((p) => p.userId === user.userId)) {
+      this.markPlayerSeen(room, user.userId, true);
       return this.cloneRoom(room);
     }
 
@@ -117,6 +121,8 @@ export class RoomsService {
       userId: user.userId,
       nickname: user.nickname,
       isAI: false,
+      connected: true,
+      lastSeenAt: new Date().toISOString(),
     });
 
     if (room.players.length >= room.maxPlayers) {
@@ -135,6 +141,7 @@ export class RoomsService {
 
     const player = room.players.find((p) => p.userId === userId);
     if (!player) throw new ForbiddenException('你不在该房间内');
+    this.markPlayerSeen(room, userId, true);
     if (player.seat !== room.currentTurnSeat) {
       throw new BadRequestException('还没轮到你');
     }
@@ -167,6 +174,7 @@ export class RoomsService {
     if (!room.players.some((p) => p.userId === userId)) {
       throw new ForbiddenException('你不在该房间内');
     }
+    this.markPlayerSeen(room, userId, true);
     if (room.players.length < room.maxPlayers && room.mode === RoomMode.PVP) {
       throw new BadRequestException('对手尚未加入');
     }
@@ -188,31 +196,52 @@ export class RoomsService {
   }
 
   async releasePlayer(userId: string): Promise<ReleasePlayerResult> {
-    const deletedRoomIds: string[] = [];
-    const finishedRooms: Room[] = [];
+    const result = this.createLifecycleResult();
 
     for (const room of Array.from(this.rooms.values())) {
-      const leavingPlayer = room.players.find((player) => player.userId === userId);
-      if (!leavingPlayer || room.status === RoomStatus.FINISHED) continue;
-
-      const remainingHumans = room.players.filter(
-        (player) => !player.isAI && player.userId && player.userId !== userId,
-      );
-
-      if (room.mode === RoomMode.AI || room.status === RoomStatus.WAITING || remainingHumans.length === 0) {
-        this.rooms.delete(room.id);
-        deletedRoomIds.push(room.id);
-        continue;
-      }
-
-      room.status = RoomStatus.FINISHED;
-      room.winnerSeat = remainingHumans[0].seat;
-      room.isDraw = false;
-      this.touch(room);
-      finishedRooms.push(this.cloneRoom(room));
+      if (!room.players.some((player) => player.userId === userId)) continue;
+      this.applyPlayerExit(room, userId, result);
     }
 
-    return { deletedRoomIds, finishedRooms };
+    return result;
+  }
+
+  async leaveRoom(roomId: string, userId: string): Promise<ReleasePlayerResult> {
+    const room = this.getStoredRoom(roomId);
+    if (!room.players.some((player) => player.userId === userId)) {
+      throw new ForbiddenException('你不在该房间内');
+    }
+
+    const result = this.createLifecycleResult();
+    this.applyPlayerExit(room, userId, result);
+    return result;
+  }
+
+  recordPlayerConnected(userId: string, connected: boolean): void {
+    for (const room of this.rooms.values()) {
+      if (this.markPlayerSeen(room, userId, connected)) {
+        this.touch(room);
+      }
+    }
+  }
+
+  sweepInactivePlayers(maxIdleMs: number, now = Date.now()): ReleasePlayerResult {
+    const result = this.createLifecycleResult();
+
+    for (const room of Array.from(this.rooms.values())) {
+      if (room.status === RoomStatus.FINISHED) continue;
+
+      for (const player of [...room.players]) {
+        if (player.isAI || !player.userId || player.connected !== false || !player.lastSeenAt) continue;
+
+        const idleMs = now - new Date(player.lastSeenAt).getTime();
+        if (Number.isFinite(idleMs) && idleMs >= maxIdleMs) {
+          this.applyPlayerExit(room, player.userId, result);
+        }
+      }
+    }
+
+    return result;
   }
 
   /** Evaluate terminal state and stamp winner/draw/status onto the room. */
@@ -251,6 +280,55 @@ export class RoomsService {
 
   private touch(room: Room): void {
     room.updatedAt = new Date().toISOString();
+  }
+
+  private applyPlayerExit(room: Room, userId: string, result: ReleasePlayerResult): void {
+    const leavingPlayer = room.players.find((player) => player.userId === userId);
+    if (!leavingPlayer || room.status === RoomStatus.FINISHED) return;
+
+    const remainingHumans = room.players.filter(
+      (player) => !player.isAI && player.userId && player.userId !== userId,
+    );
+
+    if (
+      room.mode === RoomMode.AI ||
+      (room.status === RoomStatus.WAITING && room.hostUserId === userId) ||
+      remainingHumans.length === 0
+    ) {
+      this.rooms.delete(room.id);
+      result.deletedRoomIds.push(room.id);
+      return;
+    }
+
+    if (room.status === RoomStatus.WAITING) {
+      room.players = room.players.filter((player) => player.userId !== userId);
+      this.touch(room);
+      result.updatedRooms.push(this.cloneRoom(room));
+      return;
+    }
+
+    room.status = RoomStatus.FINISHED;
+    room.winnerSeat = remainingHumans[0].seat;
+    room.isDraw = false;
+    this.touch(room);
+    result.finishedRooms.push(this.cloneRoom(room));
+  }
+
+  private markPlayerSeen(room: Room, userId: string, connected: boolean): boolean {
+    const player = room.players.find((p) => p.userId === userId);
+    if (!player) return false;
+
+    player.connected = connected;
+    player.lastSeenAt = new Date().toISOString();
+    return true;
+  }
+
+  private createLifecycleResult(): ReleasePlayerResult {
+    return {
+      deletedRoomIds: [],
+      finishedRooms: [],
+      updatedRooms: [],
+    };
   }
 
   private cloneRoom(room: Room): Room {

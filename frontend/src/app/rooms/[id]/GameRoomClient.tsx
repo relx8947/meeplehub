@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Room } from '@/types';
 import { usePlayerStore } from '@/store/player';
@@ -12,10 +13,12 @@ import { reversiLegalMoves, countDiscs } from '@/lib/reversi';
 import { getGameNameZh, getModeLabel } from '@/lib/utils';
 
 export function GameRoomClient({ roomId }: { roomId: string }) {
+  const router = useRouter();
   const { player, loadFromStorage } = usePlayerStore();
   const [room, setRoom] = useState<Room | null>(null);
   const [error, setError] = useState('');
   const [joining, setJoining] = useState(false);
+  const [leaving, setLeaving] = useState(false);
 
   // Live updates via WebSocket — directly consume room:state payloads.
   const { makeMove, restart } = useGameSocket({
@@ -46,12 +49,20 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
 
   const mySeat = room?.players.find((p) => p.userId === player?.id)?.seat ?? null;
   const isInRoom = mySeat !== null;
+  const isHost = Boolean(room && player?.id === room.hostUserId);
   const canJoin =
     room &&
     room.mode === 'pvp' &&
     !isInRoom &&
     room.players.length < room.maxPlayers &&
     room.status !== 'finished';
+  const canLeave = Boolean(room && isInRoom && room.status !== 'finished');
+  const leaveLabel =
+    room?.status === 'playing'
+      ? '投降离开'
+      : isHost
+        ? '关闭房间'
+        : '离开房间';
 
   const handleJoin = useCallback(async () => {
     setJoining(true);
@@ -71,6 +82,20 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
     },
     [makeMove],
   );
+
+  const handleLeave = useCallback(async () => {
+    if (!room) return;
+
+    setLeaving(true);
+    try {
+      await api.post(`/rooms/${roomId}/leave`);
+      router.push('/rooms');
+    } catch (err: any) {
+      setError(err.response?.data?.message || '离开房间失败');
+    } finally {
+      setLeaving(false);
+    }
+  }, [room, roomId, router]);
 
   if (!room) {
     return (
@@ -167,6 +192,15 @@ export function GameRoomClient({ roomId }: { roomId: string }) {
                 className="bg-primary-600 text-white px-8 py-2.5 rounded-lg font-medium hover:bg-primary-700"
               >
                 再来一局
+              </button>
+            )}
+            {canLeave && (
+              <button
+                onClick={handleLeave}
+                disabled={leaving}
+                className="border border-red-200 bg-white px-8 py-2.5 rounded-lg font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {leaving ? '处理中...' : leaveLabel}
               </button>
             )}
           </div>

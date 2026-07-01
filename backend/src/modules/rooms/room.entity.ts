@@ -17,6 +17,8 @@ export interface RoomPlayer {
   userId: string | null; // null for AI
   nickname: string;
   isAI: boolean;
+  connected?: boolean;
+  lastSeenAt?: string;
 }
 
 export interface Room {

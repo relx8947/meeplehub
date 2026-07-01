@@ -3,12 +3,13 @@ import {
   WebSocketServer,
   SubscribeMessage,
   OnGatewayConnection,
+  OnGatewayDisconnect,
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
-import { RoomsService } from './rooms.service';
+import { Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ReleasePlayerResult, RoomsService } from './rooms.service';
 import { Room } from './room.entity';
 
 interface SocketUser {
@@ -25,16 +26,32 @@ interface SocketUser {
   },
   namespace: '/play',
 })
-export class GameGateway implements OnGatewayConnection {
+export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect, OnModuleInit, OnModuleDestroy {
   @WebSocketServer()
   server: Server;
 
   private logger = new Logger('GameGateway');
   private readonly lobbyRoom = 'lobby';
+  private readonly playerSockets = new Map<string, Set<string>>();
+  private readonly inactiveTimeoutMs = Number(process.env.ROOM_INACTIVE_TIMEOUT_MS || 10 * 60 * 1000);
+  private readonly cleanupIntervalMs = Number(process.env.ROOM_CLEANUP_INTERVAL_MS || 30 * 1000);
+  private cleanupTimer?: ReturnType<typeof setInterval>;
 
   constructor(
     private readonly roomsService: RoomsService,
   ) {}
+
+  onModuleInit() {
+    this.cleanupTimer = setInterval(() => {
+      void this.cleanupInactivePlayers();
+    }, this.cleanupIntervalMs);
+  }
+
+  onModuleDestroy() {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
+  }
 
   async handleConnection(client: Socket) {
     const playerId =
@@ -54,6 +71,17 @@ export class GameGateway implements OnGatewayConnection {
       ) || '匿名玩家';
 
     client.data.user = { id: playerId, nickname } as SocketUser;
+    this.addPlayerSocket(playerId, client.id);
+    this.roomsService.recordPlayerConnected(playerId, true);
+  }
+
+  handleDisconnect(client: Socket) {
+    const user: SocketUser | null = client.data.user;
+    if (!user) return;
+
+    if (this.removePlayerSocket(user.id, client.id) === 0) {
+      this.roomsService.recordPlayerConnected(user.id, false);
+    }
   }
 
   @SubscribeMessage('joinRoom')
@@ -145,6 +173,49 @@ export class GameGateway implements OnGatewayConnection {
 
   async broadcastLobbyRooms() {
     this.server.to(this.lobbyRoom).emit('lobby:rooms', await this.serializeOpenRooms());
+  }
+
+  async broadcastLifecycle(result: ReleasePlayerResult) {
+    const changedRooms = [...result.updatedRooms, ...result.finishedRooms];
+    for (const room of changedRooms) {
+      this.broadcast(room);
+    }
+    for (const roomId of result.deletedRoomIds) {
+      this.broadcastRoomClosed(roomId);
+    }
+
+    if (changedRooms.length > 0 || result.deletedRoomIds.length > 0) {
+      await this.broadcastLobbyRooms();
+    }
+  }
+
+  private async cleanupInactivePlayers() {
+    const result = this.roomsService.sweepInactivePlayers(this.inactiveTimeoutMs);
+    const changedCount =
+      result.deletedRoomIds.length + result.finishedRooms.length + result.updatedRooms.length;
+    if (changedCount === 0) return;
+
+    this.logger.log(`Cleaned up ${changedCount} room lifecycle change(s) for inactive players`);
+    await this.broadcastLifecycle(result);
+  }
+
+  private addPlayerSocket(playerId: string, socketId: string) {
+    const sockets = this.playerSockets.get(playerId) || new Set<string>();
+    sockets.add(socketId);
+    this.playerSockets.set(playerId, sockets);
+  }
+
+  private removePlayerSocket(playerId: string, socketId: string): number {
+    const sockets = this.playerSockets.get(playerId);
+    if (!sockets) return 0;
+
+    sockets.delete(socketId);
+    if (sockets.size === 0) {
+      this.playerSockets.delete(playerId);
+      return 0;
+    }
+
+    return sockets.size;
   }
 
   private async serializeOpenRooms() {

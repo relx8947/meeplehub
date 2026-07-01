@@ -31,6 +31,8 @@ export interface RoomPlayer {
   userId: string | null;
   nickname: string;
   isAI: boolean;
+  connected?: boolean;
+  lastSeenAt?: string;
 }
 
 export type Cell = 0 | 1 | 2;
