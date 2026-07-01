@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { rememberActiveRoom } from '@/lib/activeRoom';
+import { getRoomPlayHref } from '@/lib/utils';
 import { Game, RoomMode } from '@/types';
 
 interface CreateRoomModalProps {
@@ -31,7 +32,7 @@ export function CreateRoomModal({ games, defaultSlug, defaultMode, onClose }: Cr
         title: title || undefined,
       });
       rememberActiveRoom(res.data);
-      router.push(`/rooms/${res.data.id}`);
+      router.push(getRoomPlayHref(res.data));
     } catch (err: any) {
       setError(err.response?.data?.message || '创建失败');
       setLoading(false);

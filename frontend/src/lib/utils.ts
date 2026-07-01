@@ -86,3 +86,7 @@ export function getGameNameZh(slug: string): string {
   };
   return names[slug] || slug;
 }
+
+export function getRoomPlayHref(room: { gameSlug: string; id: string }): string {
+  return `/play/${room.gameSlug}/${room.id}`;
+}

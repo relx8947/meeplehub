@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Game } from '@/types';
 import { api } from '@/lib/api';
 import { rememberActiveRoom } from '@/lib/activeRoom';
-import { getDifficultyLabel, getDifficultyColor, getPlaytimeLabel } from '@/lib/utils';
+import { getDifficultyLabel, getDifficultyColor, getPlaytimeLabel, getRoomPlayHref } from '@/lib/utils';
 
 const GAME_EMOJI: Record<string, string> = {
   gomoku: '⚫',
@@ -25,7 +25,7 @@ export function GameDetailClient({ game }: { game: Game }) {
     try {
       const res = await api.post('/rooms', { gameSlug: game.slug, mode });
       rememberActiveRoom(res.data);
-      router.push(`/rooms/${res.data.id}`);
+      router.push(getRoomPlayHref(res.data));
     } catch (err: any) {
       setError(err.response?.data?.message || '创建房间失败');
       setLoading(null);

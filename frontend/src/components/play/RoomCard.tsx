@@ -7,6 +7,7 @@ import {
   getRoomStatusColor,
   getModeLabel,
   getGameNameZh,
+  getRoomPlayHref,
 } from '@/lib/utils';
 
 interface RoomCardProps {
@@ -42,7 +43,7 @@ export function RoomCard({ room }: RoomCardProps) {
 
       <div className="mt-4">
         <Link
-          href={`/rooms/${room.id}`}
+          href={getRoomPlayHref(room)}
           className={`block text-center py-2 rounded-lg text-sm font-medium transition-colors ${
             isFull && room.status !== 'finished'
               ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'

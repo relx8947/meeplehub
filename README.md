@@ -22,6 +22,25 @@ rooms, and play supported board games online.
 - Gomoku, Reversi, and Connect Four
 - Local AI opponent support
 
+## Frontend Structure
+
+The platform routes stay generic, while each playable game owns its own room UI:
+
+- `/games`: game catalog
+- `/rooms`: shared room lobby
+- `/rooms/:id`: compatibility redirect to the matching game UI
+- `/play/:gameSlug/:roomId`: game-specific play surface
+
+Game UI code lives under `frontend/src/games/`:
+
+- `games/shared`: room session, WebSocket state, lifecycle actions, shared shell
+- `games/gomoku`: Gomoku board and room UI
+- `games/reversi`: Reversi board and room UI
+- `games/connect-four`: Connect Four board and room UI
+
+This keeps the platform responsible for identity, rooms, WebSocket wiring, and
+lifecycle, while each board game can grow its own layout and interaction model.
+
 ## Development
 
 Install dependencies:

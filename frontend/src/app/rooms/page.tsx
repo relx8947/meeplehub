@@ -10,7 +10,7 @@ import { RoomCard } from '@/components/play/RoomCard';
 import { CreateRoomModal } from '@/components/play/CreateRoomModal';
 import { useLobbySocket } from '@/hooks/useLobbySocket';
 import { usePlayerStore } from '@/store/player';
-import { getGameNameZh } from '@/lib/utils';
+import { getGameNameZh, getRoomPlayHref } from '@/lib/utils';
 
 export default function RoomsPage() {
   const queryClient = useQueryClient();
@@ -106,7 +106,7 @@ export default function RoomsPage() {
             </p>
           </div>
           <Link
-            href={`/rooms/${resumableRoom.id}`}
+            href={getRoomPlayHref(resumableRoom)}
             className="inline-flex justify-center rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700"
           >
             进入房间
